@@ -1,0 +1,167 @@
+
+class Money {
+    private final long amountInPaise;
+    private final String currency;
+
+    Money(long amount, String currency) {
+        if (currency == null || currency.isEmpty())
+            throw new IllegalArgumentException("Invalid currency");
+        this.amountInPaise = amount;
+        this.currency = currency;
+    }
+
+    Money add(Money m) {
+        check(m);
+        return new Money(Math.addExact(amountInPaise, m.amountInPaise), currency);
+    }
+
+    Money subtract(Money m) {
+        check(m);
+        return new Money(Math.subtractExact(amountInPaise, m.amountInPaise), currency);
+    }
+
+    boolean isPositive() {
+        return amountInPaise > 0;
+    }
+
+    void check(Money m) {
+        if (m == null || !currency.equals(m.currency))
+            throw new IllegalArgumentException("Currency mismatch");
+    }
+
+    long value() { return amountInPaise; }
+
+    public String toString() {
+        return currency + " " + String.format("%.2f", amountInPaise / 100.0);
+    }
+}
+
+enum AccountStatus {
+    ACTIVE, FROZEN, CLOSED
+}
+
+class BankAccount {
+    private final String accountNumber;
+    private Money balance;
+    private final Money overdraftLimit;
+    private AccountStatus status = AccountStatus.ACTIVE;
+
+    BankAccount(String n, Money b, Money limit) {
+        if (n == null || n.isEmpty() || b == null || limit == null)
+            throw new IllegalArgumentException("Invalid account");
+        b.check(limit);
+        if (limit.value() < 0 || b.value() < -limit.value())
+            throw new IllegalArgumentException("Invalid balance");
+        accountNumber = n;
+        balance = b;
+        overdraftLimit = limit;
+    }
+
+    void validate(Money m) {
+        if (status != AccountStatus.ACTIVE)
+            throw new IllegalStateException("Account not active");
+        if (m == null || !m.isPositive())
+            throw new IllegalArgumentException("Invalid amount");
+        balance.check(m);
+    }
+
+    void deposit(Money m) {
+        validate(m);
+        balance = balance.add(m);
+    }
+
+    void withdraw(Money m) {
+        validate(m);
+        Money b = balance.subtract(m);
+        if (b.value() < -overdraftLimit.value())
+            throw new IllegalArgumentException("Overdraft exceeded");
+        balance = b;
+    }
+
+    void freeze() {
+        if (status != AccountStatus.ACTIVE)
+            throw new IllegalStateException("Not active");
+        status = AccountStatus.FROZEN;
+    }
+
+    void unfreeze() {
+        if (status != AccountStatus.FROZEN)
+            throw new IllegalStateException("Not frozen");
+        status = AccountStatus.ACTIVE;
+    }
+
+    void close() {
+        if (balance.value() != 0 || status == AccountStatus.CLOSED)
+            throw new IllegalStateException("Cannot close");
+        status = AccountStatus.CLOSED;
+    }
+
+    Money getBalance() { return balance; }
+}
+
+final class LedgerEntry {
+    private final String transactionId;
+    private final String transactionType;
+    private final Money amount;
+    private final String timestamp;
+
+    LedgerEntry(String id, String type, Money m, String time) {
+        if (id == null || type == null || m == null ||
+            !m.isPositive() || time == null)
+            throw new IllegalArgumentException("Invalid entry");
+        transactionId = id;
+        transactionType = type;
+        amount = m;
+        timestamp = time;
+    }
+
+    String getTransactionId() { return transactionId; }
+    String getTransactionType() { return transactionType; }
+    Money getAmount() { return amount; }
+    String getTimestamp() { return timestamp; }
+}
+
+class FundTransfer {
+    private final String transferId;
+    private final BankAccount source;
+    private final BankAccount destination;
+    private final Money amount;
+
+    FundTransfer(String id, BankAccount s, BankAccount d, Money m) {
+        if (id == null || s == null || d == null || s == d ||
+            m == null || !m.isPositive())
+            throw new IllegalArgumentException("Invalid transfer");
+        transferId = id;
+        source = s;
+        destination = d;
+        amount = m;
+    }
+
+    void transfer() {
+        synchronized (BankAccount.class) {
+            source.validate(amount);
+            destination.validate(amount);
+            source.withdraw(amount);
+            destination.deposit(amount);
+        }
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        BankAccount a = new BankAccount("A",
+            new Money(1000000, "INR"), new Money(200000, "INR"));
+
+        BankAccount b = new BankAccount("B",
+            new Money(500000, "INR"), new Money(0, "INR"));
+
+        new FundTransfer("T101", a, b,
+            new Money(500000, "INR")).transfer();
+
+        System.out.println("Account A: " + a.getBalance());
+        System.out.println("Account B: " + b.getBalance());
+
+        a.freeze();
+        a.unfreeze();
+    }
+}

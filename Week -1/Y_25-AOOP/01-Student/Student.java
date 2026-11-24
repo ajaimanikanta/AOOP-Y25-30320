@@ -1,4 +1,4 @@
-// 1. Create three Student objects and display their details.
+
 public class Student {
     private int studentId;
     private String name;
